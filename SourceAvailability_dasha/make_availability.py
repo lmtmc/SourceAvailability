@@ -13,6 +13,7 @@ from astropy.coordinates import EarthLocation
 from astropy.time import Time, TimeDelta
 import plotly.express as px
 import plotly.graph_objects as go
+from .color_constants import colors
 
 
 # a source class
@@ -23,17 +24,21 @@ class Source:
     day_end = 0
     day_names = []
 
-    def __init__(self, name, ra, dec, pid, pin, instrument, itime, rank):
+    def __init__(self, name, ra, dec, coordsys, pid, pin, instrument, itime, rank):
         self.lstup = None
         self.name = name
         self.ra = ra
         self.dec = dec
+        self.coordsys = coordsys
         self.pId = pid
         self.piName = pin
         self.instrument = instrument
         self.integTime = itime
         self.rank = rank
-        self.coord = SkyCoord(self.ra, self.dec, unit='deg')
+        if coordsys == 'Galactic':
+            self.coord = SkyCoord(self.ra, self.dec, unit='deg', frame='galactic')
+        else:
+            self.coord = SkyCoord(self.ra, self.dec, unit='deg')
         self.az = 0.
         self.el = 0.
         self.up = 0
@@ -148,7 +153,8 @@ class Project:
         s00 = t00.value
         t00 = int(s00.split('T')[1].split(':')[0])
         y_val = np.linspace(0, len(astroTime[:, 0]), 10)
-        y_text = np.linspace(hour_range + t00, 0 + t00, 10).astype(int)
+        y_text = np.linspace(0 + t00, hour_range + t00, 10).astype(int)
+        
         uberUp = self.uberUp[:, day_start:day_end]
 
         fig = px.imshow(uberUp, aspect='auto')
@@ -220,11 +226,15 @@ def populateProjects(LMT, astroTime, projectsFile='', targetsFile='targets.csv',
         else:
             filedata = np.recfromcsv(targetsFile, names=True, autostrip=True, dtype=None, skip_header=0, unpack=True)
         proposalId = filedata['proposal_id']
-        try:
+        if 'ranking' in filedata.dtype.fields:
+            print('rank from ranking')
             ranking = filedata['ranking']
-        except:
+        elif 'rank' in filedata.dtype.fields:
+            print('rank from rank')
+            ranking = filedata['rank']
+        else:
+            print('rank from none')
             ranking = np.array(['A'] * len(proposalId))
-        proposalId = filedata['proposal_id']
         piName = filedata['name_pi']
         sourceName = filedata['source']
         sourceRa = filedata['ra']
@@ -247,8 +257,8 @@ def populateProjects(LMT, astroTime, projectsFile='', targetsFile='targets.csv',
     # create projects
     projects = [Project(pid) for pid in list(OrderedDict.fromkeys(proposalId))]
     # create sources
-    sources = [Source(name, ra, dec, pid, pin, inst, itime, rank) for name, ra, dec, pid, pin, inst, itime, rank in
-               zip(sourceName, sourceRa, sourceDec, proposalId, piName, instrument, integTime, ranking)]
+    sources = [Source(name, ra, dec, coordsys, pid, pin, inst, itime, rank) for name, ra, dec, coordsys, pid, pin, inst, itime, rank in
+               zip(sourceName, sourceRa, sourceDec, sourceSys, proposalId, piName, instrument, integTime, ranking)]
 
     # assign sources to projects
     for p in projects:
@@ -259,7 +269,7 @@ def populateProjects(LMT, astroTime, projectsFile='', targetsFile='targets.csv',
 
         # loop through sources and generate uptimes matrices
         for i, s in enumerate(sources):
-            # print(('process source', i + 1, 'of', len(sources)))
+            print(('process source', i + 1, 'of', len(sources)))
             s.createUptimes()
 
         # pickle the list of projects
@@ -299,6 +309,7 @@ def populateProjects(LMT, astroTime, projectsFile='', targetsFile='targets.csv',
                         p.sourceList[i].piName = s.piName.decode()
                         p.sourceList[i].instrument = s.instrument.decode()
                         p.sourceList[i].rank = s.rank.decode()
+                        
 
     return projects, sources
 
@@ -340,12 +351,12 @@ def createSeasonPlot(astroTime, day_names, projects, day_start, day_end):
     return fig
 
 
-def createPressurePlot(projects, ranks, prjs, prjs_dict):
+def createPressurePlot(projects, ranks, prjs, prjs_dict,day_start, day_end):
     # prjs: csv files
     # prjs_dict
     # projects: distinct projects' name
-    index = {'RSR': 0, 'SEQUOIA': 1, 'MSIP1': 2, 'B4R': 3}
-    factor = {'RSR': 1.0, 'SEQUOIA': 1.0, 'MSIP1': 1.0, 'B4R': 1.0}
+    index = {'RSR': 0, 'SEQUOIA': 1, 'MSIP1': 2, 'B4R': 3, 'TolTEC': 4}
+    factor = {'RSR': 1.0, 'SEQUOIA': 1.0, 'MSIP1': 1.0, 'B4R': 1.0, 'TolTEC': 1.0}
     allranks = ['A', 'B', 'C', 'D']
     tot = 0
     itime = np.zeros((len(index), len(allranks), 24))  # 4x4x24
@@ -362,15 +373,51 @@ def createPressurePlot(projects, ranks, prjs, prjs_dict):
                 if s.rank == rank:
                     sum = np.sum(s.lstup)
                     if sum != 0:
+
                         ss = s.lstup * s.integTime * factor[s.instrument] / sum
-                        # print s.integTime * factor[s.instrument], sum, np.sum(ss)
+                        #print (s.integTime * factor[s.instrument], sum, np.sum(ss))
+
                         inst = index[s.instrument]
                         itime[inst][allranks.index(rank)] += ss
 
-    title = str(Source.astroTime[0, Source.day_start])[:10] + " -- " + str(Source.astroTime[-1, Source.day_end])[:10]
+    title = str(Source.astroTime[0, day_start])[:10] + " -- " + str(Source.astroTime[-1, day_end])[:10]
 
     fig = go.Figure(data=[go.Scatter(x=[], y=[])])
 
+    cols = [
+        [   
+            colors['red1'],
+            colors['red2'],
+            colors['red3'],
+            colors['red4'],
+        ],
+        [
+            colors['green1'],
+            colors['green2'],
+            colors['green3'],
+            colors['green4'],
+        ],
+        [
+            colors['blue1'],
+            colors['blue2'],
+            colors['blue3'],
+            colors['blue4'],
+        ],
+        [
+            colors['orange1'],
+            colors['orange2'],
+            colors['orange3'],
+            colors['orange4'],
+        ],
+        [
+            colors['orchid1'],
+            colors['orchid2'],
+            colors['orchid3'],
+            colors['orchid4'],
+        ]
+    ]
+          
+    
     ra = np.arange(24)  # ra = [0,...23]
     bot = np.zeros(24)
     for item, i in sorted(list(index.items()), key=lambda x: x[1]):
@@ -379,21 +426,22 @@ def createPressurePlot(projects, ranks, prjs, prjs_dict):
             # j=[0,1,2,3], rank =[A,B,C,D]
             if itime[i][j].any():
                 label = str(list(index.keys())[i]) + '-' + str(allranks[j])
-                label = item
+                #label = item
                 if factor[item] > 1.0:
                     label = label + ' * ' + str(factor[item])
                 if j == 0:
-                    fig.add_bar(y=itime[i][j], name=label)
+                    fig.add_bar(y=itime[i][j], name=label, marker={'color': 24*[cols[i][j]]})
                 else:
-                    fig.add_bar(y=itime[i][j], showlegend=False)
+                    fig.add_bar(y=itime[i][j], name=label, marker={'color': 24*[cols[i][j]]}) #showlegend=False)
                 bot = bot + itime[i][j]
     lstup = np.zeros(24)
-    at = Source.astroTime[:, Source.day_start:Source.day_end + 1].flatten()
+    at = Source.astroTime[:, day_start: day_end + 1].flatten()
     lst = (at.sidereal_time('mean').hour % 24.).astype(int)
     unique, counts = np.unique(lst, return_counts=True)
     lstup[unique] = 0.25 * counts
 
-    fig.add_trace(go.Scatter(x=ra + 0.5, y=mult * lstup, mode='lines', name='UPTIME (%.2f %%)' % (tot * 100.0)))
+    fig.add_trace(go.Scatter(x=ra + 0.5, y=mult * lstup, mode='lines', marker={'color': 'cyan'},
+                             name='UPTIME (%.2f %%) \n efficiency (%.2f %%)' % (tot* 100.0, 100.* prjs_dict['TOT'])))
     fig.update_layout(title=title,
                       barmode='stack',
                       xaxis=dict(title='LST [hours]', tickmode='linear', tick0=0, dtick=6),
