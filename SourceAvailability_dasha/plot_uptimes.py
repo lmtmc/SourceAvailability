@@ -26,7 +26,7 @@ semester = config['date']['semester']
 # set up LMT
 LMT = getLMT()
 
-title = html.H1('LMT Source Availability 2023-S1', className='mb-3 mt-2', style={'text-align': 'center'})
+title = html.H1('LMT Source Availability 2025-S1', className='mb-3 mt-2', style={'text-align': 'center'})
 # start date, end date, nhours: how many hours a day, nsubhours: how many per hour, ut0: start time
 
 astroTime = makeAstroTime(start_date, end_date, nhours, nsubhours, ut0=" 03:00:0")
@@ -321,4 +321,3 @@ def DASHA_SITE():
         ]
 
     }
-

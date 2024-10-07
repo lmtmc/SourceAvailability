@@ -226,6 +226,7 @@ def populateProjects(LMT, astroTime, projectsFile='', targetsFile='targets.csv',
         else:
             filedata = np.recfromcsv(targetsFile, names=True, autostrip=True, dtype=None, skip_header=0, unpack=True)
         proposalId = filedata['proposal_id']
+    
         if 'ranking' in filedata.dtype.fields:
             print('rank from ranking')
             ranking = filedata['ranking']
