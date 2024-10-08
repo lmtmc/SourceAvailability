@@ -16,13 +16,13 @@ import plotly.graph_objects as go
 from .color_constants import colors
 
 
-# a source class
+# Source class represnting on astronomical source
 class Source:
-    astroTime = []
-    altAz = 0
-    day_start = 0
-    day_end = 0
-    day_names = []
+    astroTime = []  # global variable for the astroTime
+    altAz = 0  # global variable for altitude and azimuth
+    day_start = 0  # start day of observation period
+    day_end = 0  # end day of observation period
+    day_names = []  # names of the days in the observation period
 
     def __init__(self, name, ra, dec, coordsys, pid, pin, instrument, itime, rank):
         self.lstup = None
@@ -35,6 +35,7 @@ class Source:
         self.instrument = instrument
         self.integTime = itime
         self.rank = rank
+        # create skycoord object based on the coordinate system
         if coordsys == 'Galactic':
             self.coord = SkyCoord(self.ra, self.dec, unit='deg', frame='galactic')
         else:
@@ -43,33 +44,39 @@ class Source:
         self.el = 0.
         self.up = 0
 
-    def __str__(self):
-        return self.pId + ',' + self.piName + ',' + self.name + ',' + self.ra + ',' + self.dec
-
     def __repr__(self):
-        return self.pId + ',' + self.piName + ',' + self.name + ',' + self.ra + ',' + self.dec
+        return f"{self.pId},{self.piName},{self.name},{str(self.ra)},{str(self.dec)}"
 
     def createUptimes(self):
+        # calculate the up times for the source
         nx = Source.astroTime.shape[0]
         ny = Source.astroTime.shape[1]
         self.az = np.zeros((nx, ny))
         self.el = np.zeros((nx, ny))
         self.up = np.zeros((nx, ny), dtype='int')
+
+        # flatten the arrays
         self.az = self.az.flatten()
         self.el = self.el.flatten()
         self.up = self.up.flatten()
+
+        # transform the coordinates to altAz
         bb = self.coord.transform_to(Source.altAz)
         self.az = bb.az.deg
         self.el = bb.alt.deg
+
+        # Mark as 'up' if the elevation is between 25 and 80 degrees
         w = np.where(np.logical_and(self.el >= 25., self.el <= 80))[0]
         self.up[w] = 1
+
+        # Calculate LST uptimes
         self.lstup = np.zeros(24)
         if self.up.any():
             at = Source.astroTime.flatten()
             lst = (at[w].sidereal_time('mean').hour % 24.).astype(int)
             unique, counts = np.unique(lst, return_counts=True)
             self.lstup[unique] = 0.25 * counts
-        # print self.lstup
+        # reshape the arrays back to original dimensions
         self.az = self.az.reshape(nx, ny)
         self.el = self.el.reshape(nx, ny)
         self.up = self.up.reshape(nx, ny)
@@ -89,7 +96,7 @@ class Project:
         return self.pId + ' ' + str(self.sourceList)
 
     def listSources(self):
-        print('')
+        # print all the sources in the project
         print((len(self.sourceList), 'Sources for Project:', self.pId))
         for i, s in enumerate(self.sourceList):
             print(('  ', s.name, s.ra, s.dec, s.coord.to_string('hmsdms'), s.pId))
@@ -98,6 +105,7 @@ class Project:
     # this method uses the Source class to generate the el and up
     # arrays for each source in the project
     def createUptimes(self):
+        # Create uptimes for all sources in the project
         for i, s in enumerate(self.sourceList):
             print(("PID:" + str(self.pId) +
                    " - Creating uptimes for source " + str(i + 1) +
@@ -105,6 +113,7 @@ class Project:
             s.createUptimes()
 
     def createUberUp(self, astroTime):
+        # create an 'uber' uptime array combining all sources in the project
         nx = astroTime.shape[0]
         ny = astroTime.shape[1]
         self.uberUp = np.zeros((nx, ny), dtype='int')
@@ -145,6 +154,7 @@ class Project:
         return fig
 
     def plotUberUp(self, astroTime, day_names, day_start, day_end):
+        # plot the 'uber' uptime for the project
         if isinstance(self.uberUp, int):
             self.createUberUp(astroTime)
         title = self.pId
@@ -154,7 +164,7 @@ class Project:
         t00 = int(s00.split('T')[1].split(':')[0])
         y_val = np.linspace(0, len(astroTime[:, 0]), 10)
         y_text = np.linspace(0 + t00, hour_range + t00, 10).astype(int)
-        
+
         uberUp = self.uberUp[:, day_start:day_end]
 
         fig = px.imshow(uberUp, aspect='auto')
@@ -173,6 +183,7 @@ class Project:
         return fig
 
 
+# create the astroTime array
 def makeAstroTime(ymd0, ymd1, nhours=13, nsubhours=4, ut0=" 00:00:0", debug=True):
     # convert year at midnight UT to unix time
     # step by 1 day across for 181 days (1 for ncols)
@@ -206,6 +217,7 @@ def getLMT():
     return EarthLocation(lat=lat, lon=lon, height=height)
 
 
+# populate the projects and sources
 def populateProjects(LMT, astroTime, projectsFile='', targetsFile='targets.csv', debug=True):
     # set the Source global variables
     Source.astroTime = astroTime
@@ -226,7 +238,7 @@ def populateProjects(LMT, astroTime, projectsFile='', targetsFile='targets.csv',
         else:
             filedata = np.recfromcsv(targetsFile, names=True, autostrip=True, dtype=None, skip_header=0, unpack=True)
         proposalId = filedata['proposal_id']
-    
+
         if 'ranking' in filedata.dtype.fields:
             print('rank from ranking')
             ranking = filedata['ranking']
@@ -258,7 +270,8 @@ def populateProjects(LMT, astroTime, projectsFile='', targetsFile='targets.csv',
     # create projects
     projects = [Project(pid) for pid in list(OrderedDict.fromkeys(proposalId))]
     # create sources
-    sources = [Source(name, ra, dec, coordsys, pid, pin, inst, itime, rank) for name, ra, dec, coordsys, pid, pin, inst, itime, rank in
+    sources = [Source(name, ra, dec, coordsys, pid, pin, inst, itime, rank) for
+               name, ra, dec, coordsys, pid, pin, inst, itime, rank in
                zip(sourceName, sourceRa, sourceDec, sourceSys, proposalId, piName, instrument, integTime, ranking)]
 
     # assign sources to projects
@@ -310,7 +323,6 @@ def populateProjects(LMT, astroTime, projectsFile='', targetsFile='targets.csv',
                         p.sourceList[i].piName = s.piName.decode()
                         p.sourceList[i].instrument = s.instrument.decode()
                         p.sourceList[i].rank = s.rank.decode()
-                        
 
     return projects, sources
 
@@ -352,7 +364,7 @@ def createSeasonPlot(astroTime, day_names, projects, day_start, day_end):
     return fig
 
 
-def createPressurePlot(projects, ranks, prjs, prjs_dict,day_start, day_end):
+def createPressurePlot(projects, ranks, prjs, prjs_dict, day_start, day_end):
     # prjs: csv files
     # prjs_dict
     # projects: distinct projects' name
@@ -374,9 +386,8 @@ def createPressurePlot(projects, ranks, prjs, prjs_dict,day_start, day_end):
                 if s.rank == rank:
                     sum = np.sum(s.lstup)
                     if sum != 0:
-
                         ss = s.lstup * s.integTime * factor[s.instrument] / sum
-                        #print (s.integTime * factor[s.instrument], sum, np.sum(ss))
+                        # print (s.integTime * factor[s.instrument], sum, np.sum(ss))
 
                         inst = index[s.instrument]
                         itime[inst][allranks.index(rank)] += ss
@@ -386,7 +397,7 @@ def createPressurePlot(projects, ranks, prjs, prjs_dict,day_start, day_end):
     fig = go.Figure(data=[go.Scatter(x=[], y=[])])
 
     cols = [
-        [   
+        [
             colors['red1'],
             colors['red2'],
             colors['red3'],
@@ -417,8 +428,7 @@ def createPressurePlot(projects, ranks, prjs, prjs_dict,day_start, day_end):
             colors['orchid4'],
         ]
     ]
-          
-    
+
     ra = np.arange(24)  # ra = [0,...23]
     bot = np.zeros(24)
     for item, i in sorted(list(index.items()), key=lambda x: x[1]):
@@ -427,13 +437,13 @@ def createPressurePlot(projects, ranks, prjs, prjs_dict,day_start, day_end):
             # j=[0,1,2,3], rank =[A,B,C,D]
             if itime[i][j].any():
                 label = str(list(index.keys())[i]) + '-' + str(allranks[j])
-                #label = item
+                # label = item
                 if factor[item] > 1.0:
                     label = label + ' * ' + str(factor[item])
                 if j == 0:
-                    fig.add_bar(y=itime[i][j], name=label, marker={'color': 24*[cols[i][j]]})
+                    fig.add_bar(y=itime[i][j], name=label, marker={'color': 24 * [cols[i][j]]})
                 else:
-                    fig.add_bar(y=itime[i][j], name=label, marker={'color': 24*[cols[i][j]]}) #showlegend=False)
+                    fig.add_bar(y=itime[i][j], name=label, marker={'color': 24 * [cols[i][j]]})  # showlegend=False)
                 bot = bot + itime[i][j]
     lstup = np.zeros(24)
     at = Source.astroTime[:, day_start: day_end + 1].flatten()
@@ -442,7 +452,7 @@ def createPressurePlot(projects, ranks, prjs, prjs_dict,day_start, day_end):
     lstup[unique] = 0.25 * counts
 
     fig.add_trace(go.Scatter(x=ra + 0.5, y=mult * lstup, mode='lines', marker={'color': 'cyan'},
-                             name='UPTIME (%.2f %%) \n efficiency (%.2f %%)' % (tot* 100.0, 100.* prjs_dict['TOT'])))
+                             name='UPTIME (%.2f %%) \n efficiency (%.2f %%)' % (tot * 100.0, 100. * prjs_dict['TOT'])))
     fig.update_layout(title=title,
                       barmode='stack',
                       xaxis=dict(title='LST [hours]', tickmode='linear', tick0=0, dtick=6),

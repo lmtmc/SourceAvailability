@@ -1,5 +1,5 @@
 import dash_bootstrap_components as dbc
-from dash import html, dcc, Output, Input, ctx
+from dash import html, dcc, Output, Input, ctx, no_update
 from dash_component_template import ComponentTemplate
 import plotly.graph_objs as go
 import os
@@ -33,19 +33,15 @@ astroTime = makeAstroTime(start_date, end_date, nhours, nsubhours, ut0=" 03:00:0
 
 day_names = [str(a)[:10] for a in astroTime[0, :]]
 days = len(day_names)
+
 efficiency = 0.5
 prjs_dict = {'UM': 0.15, 'US': 0.15, 'MX': 0.7, 'TOT': efficiency}
 # source_range to show and the total sources number for each project
 global source_range, source_len
-
 nsources = 6
 source_range = [0, nsources]
 source_len = nsources
 # populate the projects list
-
-projects = []
-sources = []
-
 
 def make_project(prjs):
     projects = []
@@ -65,7 +61,8 @@ def make_project(prjs):
 
 prjs = ['MX', 'US', 'UM']
 projects, sources = make_project(prjs)
-
+print('projects', projects[:2])
+print('sources', sources[:2])
 
 # # get unique project name
 # master_projects = projects
@@ -78,90 +75,74 @@ class ControlContent(ComponentTemplate):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    source_select = [
-        dbc.Label('Select source:', size='md'),
-        html.Div('Sources:', id='sources'),
-        dbc.ButtonGroup(
-            [
-                dbc.Button('All ', id='btn-all', n_clicks=0, className='me-2 mt-2', color="secondary"),
-                dbc.Button('Prev 6', id='btn-prev', n_clicks=0, className='me-2 mt-2', color="secondary"),
-                dbc.Button('Next 6', id='btn-next', n_clicks=0, className='me-2 mt-2', color="secondary")
-            ],
-            # vertical=True
-        )
+    @staticmethod
+    def create_button(label, id):
+        return dbc.Button(label, id=id, n_clicks=0, className='me-2 mt-2', color="secondary")
 
-    ]
-    date_select = [
-        dbc.Label('Select start and end date :', size='md'),
-        dbc.InputGroup(
-            [
-                dbc.InputGroupText('Start Day ', style={'font-size': 14, 'width': 100}),
-                dbc.Select(options=[
-                    {'label': day_names[i], 'value': i} for i in range(days)
-                ], id='start_day', placeholder=day_names[0], value=0)
-            ]),
-        dbc.InputGroup(
-            [
-                dbc.InputGroupText('End Day', style={'font-size': 14, 'width': 100}),
-                dbc.Select(options=[
-                    {'label': day_names[i], 'value': i} for i in range(days)
-                ], id='end_day', placeholder=day_names[days - 1], value=days - 1)
+    @staticmethod
+    def create_select(label, id, options, placeholder, value):
+        return dbc.InputGroup([
+            dbc.InputGroupText(label, style={'font-size': 14, 'width': 100}),
+            dbc.Select(options=options, id=id, placeholder=placeholder, value=value)
+        ])
+
+    @staticmethod
+    def create_checklist(label, id, options, value):
+        return [
+            dbc.Label(label, id=f'{id}_label', size='md'),
+            dbc.Checklist(options=options, id=id, value=value, inline=True)
+        ]
+
+    @classmethod
+    def build(cls, day_names, days, projects):
+        source_select = [
+            dbc.Label('Select source:', size='md'),
+            html.Div('Sources:', id='sources'),
+            dbc.ButtonGroup([
+                cls.create_button('All', 'btn-all'),
+                cls.create_button('Prev 6', 'btn-prev'),
+                cls.create_button('Next 6', 'btn-next')
             ])
-    ]
-    project_select = [
-        dbc.Label('Select date:', size='md'),
-        dbc.InputGroup(
-            [
-                dbc.InputGroupText('Date', style={'font-size': 14, 'width': 100}),
-                dbc.Select(options=[
-                    {'label': day_names[i], 'value': i} for i in range(days)
-                ], id='day', placeholder=day_names[0], value=0)
-            ]),
-        dbc.Label('Select project name:', size='md'),
-        dcc.Dropdown(options=[
-            {'label': str(projects[i]), 'value': i} for i in range(len(projects))
-        ], id='project_select', placeholder=str(projects[0]), value=0),
+        ]
 
-    ]
-    project_ranks = [
-        dbc.Label('Select project file:', id='file_label', size='md'),
-        dbc.Checklist(
-            options=[
-                {'label': 'UM', 'value': 'UM'},
-                {'label': 'US', 'value': 'US'},
-                {'label': 'MX', 'value': 'MX'},
-                # {'label': 'MX-MX9', 'value': 'MX-MX9'},
-            ],
-            id='file-list-input',
-            value=['UM', 'US', 'MX'],
-            inline=True
-        ),
-        dbc.Label('Select project rank:', id='rank_label', size='md'),
-        dbc.Checklist(
-            options=[
-                {'label': 'A', 'value': 'A'},
-                {'label': 'B', 'value': 'B'},
-                {'label': 'C', 'value': 'C'},
-                {'label': 'D', 'value': 'D'},
-            ],
-            id='rank-list-input',
-            value=['A'],
-            inline=True
-        )
-    ]
+        date_options = [{'label': day_names[i], 'value': i} for i in range(days)]
+        date_select = [
+            dbc.Label('Select start and end date:', size='md'),
+            cls.create_select('Start Day', 'start_day', date_options, day_names[0], 0),
+            cls.create_select('End Day', 'end_day', date_options, day_names[-1], days - 1)
+        ]
+
+        project_select = [
+            dbc.Label('Select date:', size='md'),
+            cls.create_select('Date', 'day', date_options, day_names[0], 0),
+            dbc.Label('Select project name:', size='md'),
+            dcc.Dropdown(
+                options=[{'label': str(p), 'value': i} for i, p in enumerate(projects)],
+                id='project_select', placeholder=str(projects[0]), value=0
+            )
+        ]
+
+        project_ranks = cls.create_checklist('Select project file:', 'file-list-input',
+                                             [{'label': x, 'value': x} for x in ['UM', 'US', 'MX']],
+                                             ['UM', 'US', 'MX']) + \
+                        cls.create_checklist('Select project rank:', 'rank-list-input',
+                                             [{'label': x, 'value': x} for x in ['A', 'B', 'C', 'D']], ['A'])
+
+        return {
+            'source_select': source_select,
+            'date_select': date_select,
+            'project_select': project_select,
+            'project_ranks': project_ranks
+        }
 
 
-control = dbc.Row([dbc.CardGroup(
-    [
-        dbc.Card(dbc.Collapse(dbc.CardBody(ControlContent.date_select),
-                              id='is_date', is_open=True, ), color='white', outline=True),
-        dbc.Card(dbc.Collapse(dbc.CardBody(ControlContent.project_ranks),
-                              id='is_rank', is_open=True), color='white', outline=True),
-        dbc.Card(dbc.Collapse(dbc.CardBody(ControlContent.project_select),
-                              id='is_project', is_open=False), color='white', outline=True),
-        dbc.Card(dbc.Collapse(dbc.CardBody(ControlContent.source_select),
-                              id='is_source', is_open=False), color='white', outline=True)
-    ], className='mb-3', )], )
+def create_control_layout(content):
+    return dbc.Row([dbc.CardGroup([
+        dbc.Card(dbc.Collapse(dbc.CardBody(content['date_select']), id='is_date', is_open=True), color='white', outline=True),
+        dbc.Card(dbc.Collapse(dbc.CardBody(content['project_ranks']), id='is_rank', is_open=True), color='white', outline=True),
+        dbc.Card(dbc.Collapse(dbc.CardBody(content['project_select']), id='is_project', is_open=False), color='white', outline=True),
+        dbc.Card(dbc.Collapse(dbc.CardBody(content['source_select']), id='is_source', is_open=False), color='white', outline=True)
+    ], className='mb-3')])
 
 
 class SourceAvailability(ComponentTemplate):
@@ -180,15 +161,19 @@ class SourceAvailability(ComponentTemplate):
         # header part
         header_container.child(title)
         body_container.child(dbc.Label('Click the tab to view different plots:', size='lg'))
-        body_container.child(
-            dbc.Tabs(
-                [
-                    dbc.Tab(label='Pressure Plot', tab_id='pressure', activeTabClassName='text-success'),
-                    dbc.Tab(label='Season Plot', tab_id='season', activeTabClassName='text-success'),
-                    dbc.Tab(label='Up times', tab_id='upTimes', activeTabClassName='text-success'),
-                    dbc.Tab(label='Uber up', tab_id='uberUp', activeTabClassName='text-success'),
-                ], id='tabs', active_tab='pressure', className='mt-2 mb-2', )
-        )
+        body_container.child(dbc.Tabs([
+            dbc.Tab(label=label, tab_id=tab_id, activeTabClassName='text-success')
+            for label, tab_id in [
+                ('Pressure Plot', 'pressure'),
+                ('Season Plot', 'season'),
+                ('Up times', 'upTimes'),
+                ('Uber up', 'uberUp')
+            ]
+        ], id='tabs', active_tab='pressure', className='mt-2 mb-2'))
+
+        control_content = ControlContent.build(day_names, days, projects)
+        control = create_control_layout(control_content)
+
         body_container.child(html.Div(control, id='control-content'))
         body_container.child(html.Div(id='tab-content'))
 
@@ -269,35 +254,25 @@ class SourceAvailability(ComponentTemplate):
             projects_options = [
                 {'label': str(selected_projects[i]), 'value': i} for i in range(len(selected_projects))
             ]
-            if selected_projects:
-                source_len = len(selected_projects[project_index].sourceList)
-            else:
-                figure_plot = go.Figure(data=[go.Scatter(x=[], y=[])])
+            if not selected_projects:
+                return projects_options, no_update,no_update,no_update,no_update, dcc.Graph(figure=figure_plot)
+            if project_index is None or project_index >= len(selected_projects):
+                project_index = 0
+
+            source_len = len(selected_projects[project_index].sourceList)
 
             if at == 'pressure':
-                is_date = True
-                is_rank = True
-                is_project = False
-                is_source = False
+                is_date, is_rank, is_project, is_source = True, True, False, False
                 figure_plot = createPressurePlot(selected_projects, selected_ranks, prjs, prjs_dict, int(start),
                                                  int(end))
             elif at == 'season':
-                is_date = False
-                is_rank = True
-                is_project = False
-                is_source = False
+                is_date, is_rank, is_project, is_source = False, True, False, False
                 figure_plot = createSeasonPlot(astroTime, day_names, selected_projects, int(start), int(end))
             elif at == 'upTimes':
-                is_date = False
-                is_rank = True
-                is_project = True
-                is_source = True
+                is_date, is_rank, is_project, is_source = False, True, True, True
                 figure_plot = selected_projects[project_index].plotUptimes(astroTime, day_names, int(day), source_range)
             elif at == 'uberUp':
-                is_date = True
-                is_rank = True
-                is_project = True
-                is_source = False
+                is_date, is_rank, is_project, is_source = True, True, True, False
                 figure_plot = selected_projects[project_index].plotUberUp(astroTime, day_names, int(start), int(end))
 
             return projects_options, is_date, is_rank, is_project, is_source, dcc.Graph(figure=figure_plot)
